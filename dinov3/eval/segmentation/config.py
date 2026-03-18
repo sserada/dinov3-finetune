@@ -70,6 +70,7 @@ class DecoderConfig:
 class TrainConfig:
     diceloss_weight: float = 0.0
     celoss_weight: float = 1.0
+    class_weight: list | None = None  # per-class weights for CE and Dice losses
 
 
 @dataclass

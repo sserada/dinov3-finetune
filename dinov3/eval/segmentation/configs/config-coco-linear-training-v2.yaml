@@ -1,6 +1,8 @@
-# Config for COCO Segmentation, linear training
+# Config for COCO Segmentation, linear training v2
+# - CrossEntropy + Dice loss (0.5 + 0.5)
+# - Class weights (inverse frequency from bepli_v2 train set)
 
-bs: 4  # Batch size per GPU (reduced from 8 for COCO's larger images)
+bs: 4
 n_gpus: 8
 metric_to_save: 'mIoU'
 model_dtype: FLOAT32
@@ -16,25 +18,28 @@ scheduler:
     use_beta1: False
     update_momentum: False
 optimizer:
-  lr : 1e-3
+  lr: 1e-3
   beta1: 0.9
   beta2: 0.999
   weight_decay: 1e-3
   gradient_clip: 'inf'
 datasets:
-  root: ""  # Path to bepli_v2 directory (containing train/, val/ with _annotations.coco.json and images/)
+  root: ""
   train: "COCOSegmentation:split=TRAIN"
   val: "COCOSegmentation:split=VAL"
 train:
-  diceloss_weight: 0.0
-  celoss_weight: 1.0
+  diceloss_weight: 0.5
+  celoss_weight: 0.5
+  # Inverse-frequency class weights (normalized, mean=1) from bepli_v2 train set
+  # background is strongly downweighted (0.0008) to counter 98.2% dominance
+  class_weight: [0.0008, 0.6047, 1.2736, 0.3393, 0.6696, 0.5980, 0.2457, 2.9051, 0.1825, 0.6214, 4.1945, 0.3648]
 decoder_head:
-  type: "linear"  # Linear probing with frozen backbone
-  backbone_out_layers: LAST  # Use only last layer for lightweight decoder
+  type: "linear"
+  backbone_out_layers: LAST
   use_cls_token: False
   use_batchnorm: True
   use_backbone_norm: True
-  num_classes: 12  # bepli_v2: 11 debris classes + background
+  num_classes: 12
 transforms:
   train:
     img_size: 512
@@ -45,7 +50,7 @@ transforms:
     img_size: 512
 eval:
   compute_metric_per_image: False
-  reduce_zero_label: False  # COCO includes background as class 0
+  reduce_zero_label: False
   mode: "slide"
   crop_size: 512
   stride: 341

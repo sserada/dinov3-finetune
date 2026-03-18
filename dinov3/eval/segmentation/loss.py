@@ -265,7 +265,8 @@ class CrossEntropyLoss(nn.Module):
         self.avg_non_ignore = avg_non_ignore
 
     def forward(self, pred, label):
-        loss = F.cross_entropy(pred, label, weight=self.class_weight, reduction="none", ignore_index=self.ignore_index)
+        class_weight = self.class_weight.to(pred.device) if self.class_weight is not None else None
+        loss = F.cross_entropy(pred, label, weight=class_weight, reduction="none", ignore_index=self.ignore_index)
 
         if (self.avg_factor is None) and self.avg_non_ignore and self.reduction == "mean":
             avg_factor = label.numel() - (label == self.ignore_index).sum().item()
@@ -279,18 +280,26 @@ class CrossEntropyLoss(nn.Module):
 class MultiSegmentationLoss(nn.Module):
     """
     Combine different losses used in segmentation.
+    Supports simultaneous use of CrossEntropy and Dice losses with optional class weights.
     """
 
-    def __init__(self, diceloss_weight=0.0, celoss_weight=0.0):
+    def __init__(self, diceloss_weight=0.0, celoss_weight=0.0, class_weight=None):
         super(MultiSegmentationLoss, self).__init__()
-
-        if diceloss_weight > 0:
-            self.loss = MultilabelDiceLoss(loss_weight=diceloss_weight)
-        elif celoss_weight > 0:
-            self.loss = CrossEntropyLoss(reduction="mean", loss_weight=celoss_weight)
-        else:
-            self.loss = lambda _: 0
+        self.ce_loss = CrossEntropyLoss(
+            reduction="mean",
+            loss_weight=celoss_weight,
+            class_weight=torch.tensor(class_weight, dtype=torch.float32) if class_weight is not None else None,
+        ) if celoss_weight > 0 else None
+        self.dice_loss = DiceLoss(
+            loss_weight=diceloss_weight,
+            class_weight=class_weight,
+        ) if diceloss_weight > 0 else None
 
     def forward(self, pred, gt):
         """Forward function."""
-        return self.loss(pred, gt)
+        loss = torch.tensor(0.0, device=pred.device)
+        if self.ce_loss is not None:
+            loss = loss + self.ce_loss(pred, gt)
+        if self.dice_loss is not None:
+            loss = loss + self.dice_loss(pred, gt)
+        return loss

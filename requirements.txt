@@ -1,8 +1,12 @@
 ftfy
 omegaconf
+openpyxl
+pandas
+pycocotools
 regex
 scikit-learn
 submitit
+tensorboard
 termcolor
 torch
 torchmetrics

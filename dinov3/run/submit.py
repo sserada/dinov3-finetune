@@ -115,10 +115,12 @@ def get_run_parser():
 
 def get_shared_folder() -> Path:
     user_checkpoint_path = get_user_checkpoint_path()
-    if user_checkpoint_path is None:
-        raise RuntimeError("Path to user checkpoint cannot be determined")
-    path = user_checkpoint_path / "experiments"
-    path.mkdir(exist_ok=True)
+    if user_checkpoint_path is None or not user_checkpoint_path.parent.exists():
+        # Local environment: fall back to ~/experiments
+        path = Path.home() / "experiments"
+    else:
+        path = user_checkpoint_path / "experiments"
+    path.mkdir(parents=True, exist_ok=True)
     return path
 
 

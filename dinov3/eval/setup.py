@@ -3,6 +3,7 @@
 # This software may be used and distributed in accordance with
 # the terms of the DINOv3 License Agreement.
 
+import os
 from dataclasses import dataclass
 from typing import Tuple, TypedDict
 
@@ -21,6 +22,8 @@ class ModelConfig:
     pretrained_weights: str | None = None
     # Loading a DINOv3 or v2 model from torch.hub
     dino_hub: str | None = None
+    # Optional local weights path to use with dino_hub (avoids fetching from remote)
+    dino_hub_weights: str | None = None
 
 
 class BaseModelContext(TypedDict):
@@ -33,14 +36,19 @@ class BaseModelContext(TypedDict):
 
 def load_model_and_context(model_config: ModelConfig, output_dir: str) -> tuple[torch.nn.Module, BaseModelContext]:
     if model_config.dino_hub is not None:
-        assert model_config.pretrained_weights is None and model_config.config_file is None
+        assert model_config.config_file is None
         if "dinov3" in model_config.dino_hub:
             repo = "dinov3"
         elif "dinov2" in model_config.dino_hub:
             repo = "dinov2"
         else:
             raise ValueError
-        model = torch.hub.load(f"facebookresearch/{repo}", model_config.dino_hub)
+        if model_config.dino_hub_weights is not None:
+            # Load architecture from local repo + weights from local file
+            repo_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            model = torch.hub.load(repo_dir, model_config.dino_hub, source="local", weights=model_config.dino_hub_weights)
+        else:
+            model = torch.hub.load(f"facebookresearch/{repo}", model_config.dino_hub)
         base_model_context = BaseModelContext(autocast_dtype=torch.float)
     else:
         model, base_model_context = setup_and_build_model(

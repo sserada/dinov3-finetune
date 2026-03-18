@@ -11,6 +11,7 @@ import random
 
 import torch
 import torch.distributed as dist
+from torch.utils.tensorboard import SummaryWriter
 
 from dinov3.data import DatasetWithEnumeratedTargets, SamplerType, make_data_loader, make_dataset
 import dinov3.distributed as distributed
@@ -118,7 +119,7 @@ def train_step(
     # b) forward pass
     with torch.autocast("cuda", dtype=model_dtype, enabled=True if model_dtype is not None else False):
         pred = segmentation_model(batch_img)  # B x num_classes x h x w
-        gt = torch.squeeze(gt).long()  # Adapt gt dimension to enable loss calculation
+        gt = gt.squeeze(1).long()  # Adapt gt dimension: remove channel dim only (not batch dim)
 
     # c) compute loss
     if gt.shape[-2:] != pred.shape[-2:]:
@@ -223,7 +224,7 @@ def train_segmentation(
         sampler_type=val_sampler_type,
         drop_last=False,
         shuffle=False,
-        persistent_workers=True,
+        persistent_workers=config.num_workers > 0,
     )
 
     # 3- define and create scaler, optimizer, scheduler, loss
@@ -249,11 +250,20 @@ def train_segmentation(
         constructor_kwargs=config.scheduler.constructor_kwargs,
     )
     criterion = MultiSegmentationLoss(
-        diceloss_weight=config.train.diceloss_weight, celoss_weight=config.train.celoss_weight
+        diceloss_weight=config.train.diceloss_weight,
+        celoss_weight=config.train.celoss_weight,
+        class_weight=config.train.class_weight,
     )
     total_iter = config.scheduler.total_iter
     global_step = 0
     global_best_metric_values = {metric: 0.0 for metric in SEGMENTATION_METRICS}
+
+    # 4- TensorBoard writer (rank 0 only)
+    tb_writer = None
+    if distributed.is_main_process():
+        tb_log_dir = os.path.join(config.output_dir, "tensorboard")
+        tb_writer = SummaryWriter(log_dir=tb_log_dir)
+        logger.info(f"TensorBoard logs: {tb_log_dir}")
 
     # 5- train the model
     metric_logger = MetricLogger(delimiter="  ")
@@ -281,6 +291,9 @@ def train_segmentation(
         )
         global_step += 1
         metric_logger.update(loss=loss)
+        if tb_writer is not None:
+            tb_writer.add_scalar("train/loss", loss.item(), global_step)
+            tb_writer.add_scalar("train/lr", optimizer.param_groups[0]["lr"], global_step)
         if global_step % config.eval.eval_interval == 0:
             dist.barrier()
             is_better, best_metric_values_dict = validate(
@@ -296,6 +309,9 @@ def train_segmentation(
                 config.metric_to_save,
                 global_best_metric_values[config.metric_to_save],
             )
+            if tb_writer is not None:
+                for metric_name, metric_val in best_metric_values_dict.items():
+                    tb_writer.add_scalar(f"val/{metric_name}", metric_val, global_step)
             if is_better:
                 logger.info(f"New best metrics at Step {global_step}: {best_metric_values_dict}")
                 global_best_metric_values = best_metric_values_dict
@@ -315,10 +331,15 @@ def train_segmentation(
                 config.metric_to_save,
                 global_best_metric_values[config.metric_to_save],
             )
+            if tb_writer is not None:
+                for metric_name, metric_val in best_metric_values_dict.items():
+                    tb_writer.add_scalar(f"val/{metric_name}", metric_val, global_step)
             if is_better:
                 logger.info(f"New best metrics at Step {global_step}: {best_metric_values_dict}")
                 global_best_metric_values = best_metric_values_dict
     logger.info("Training is done!")
+    if tb_writer is not None:
+        tb_writer.close()
     # segmentation_model is a module list of [backbone, decoder]
     # Only save the decoder head
     torch.save(

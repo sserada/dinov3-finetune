@@ -13,8 +13,11 @@ class ClusterType(Enum):
     CW = "cw"
 
 
-def _guess_cluster_type() -> ClusterType:
-    return ClusterType.CW
+def _guess_cluster_type() -> Optional[ClusterType]:
+    # Detect Slurm cluster by environment variable
+    if os.environ.get("SLURM_JOB_ID") is not None:
+        return ClusterType.CW
+    return None
 
 
 def get_cluster_type(

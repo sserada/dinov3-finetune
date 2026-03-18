@@ -15,7 +15,7 @@ try:
 except ImportError:
     raise ImportError("Please install pycocotools: pip install pycocotools")
 
-from .decoders import Decoder, ImageDataDecoder
+from .decoders import Decoder, DenseTargetDecoder, ImageDataDecoder
 from .extended import ExtendedVisionDataset
 
 
@@ -29,15 +29,6 @@ class _Split(Enum):
             _Split.TRAIN: "train",
             _Split.VAL: "val",
         }[self]
-
-
-class COCOSegmentationTargetDecoder(Decoder[Image.Image]):
-    """Decoder for COCO segmentation masks."""
-
-    def decode(self, data: Any) -> Image.Image:
-        """Decode COCO annotation to PIL Image mask."""
-        # data is already a PIL Image created in get_target
-        return data
 
 
 def _create_semantic_mask_from_annotations(
@@ -118,8 +109,8 @@ class COCOSegmentation(ExtendedVisionDataset):
         transform: Optional[Callable] = None,
         target_transform: Optional[Callable] = None,
         image_decoder: Decoder = ImageDataDecoder,
-        target_decoder: Decoder = COCOSegmentationTargetDecoder,
-        num_classes: int = 81,  # COCO has 80 classes + background
+        target_decoder: Decoder = DenseTargetDecoder,
+        num_classes: int = 12,  # bepli_v2: 11 debris classes + background
     ) -> None:
         super().__init__(
             root=root,
@@ -133,23 +124,20 @@ class COCOSegmentation(ExtendedVisionDataset):
         self.split = split
         self.num_classes = num_classes
 
-        # Load COCO annotations
-        ann_file = os.path.join(
-            root,
-            "annotations",
-            f"instances_{split.dirname}2017.json"
-        )
+        # Load COCO annotations (bepli_v2 / Roboflow COCO format)
+        ann_file = os.path.join(root, split.dirname, "_annotations.coco.json")
 
         if not os.path.exists(ann_file):
             raise FileNotFoundError(
                 f"Annotation file not found: {ann_file}\n"
-                f"Expected COCO directory structure:\n"
+                f"Expected bepli_v2 directory structure:\n"
                 f"  {root}/\n"
-                f"    annotations/\n"
-                f"      instances_train2017.json\n"
-                f"      instances_val2017.json\n"
-                f"    train2017/\n"
-                f"    val2017/"
+                f"    train/\n"
+                f"      _annotations.coco.json\n"
+                f"      images/\n"
+                f"    val/\n"
+                f"      _annotations.coco.json\n"
+                f"      images/"
             )
 
         self.coco = COCO(ann_file)
@@ -160,8 +148,8 @@ class COCOSegmentation(ExtendedVisionDataset):
         # Build category ID to class index mapping
         self.cat_id_to_class_idx = self._build_category_mapping()
 
-        # Image directory
-        self.img_dir = os.path.join(root, f"{split.dirname}2017")
+        # Image directory (bepli_v2 / Roboflow COCO format)
+        self.img_dir = os.path.join(root, split.dirname, "images")
 
         print(f"COCO Segmentation dataset initialized:")
         print(f"  Split: {split.value}")
