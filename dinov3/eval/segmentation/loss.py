@@ -266,14 +266,21 @@ class CrossEntropyLoss(nn.Module):
 
     def forward(self, pred, label):
         class_weight = self.class_weight.to(pred.device) if self.class_weight is not None else None
-        loss = F.cross_entropy(pred, label, weight=class_weight, reduction="none", ignore_index=self.ignore_index)
 
-        if (self.avg_factor is None) and self.avg_non_ignore and self.reduction == "mean":
+        if self.avg_factor is None and self.avg_non_ignore and self.reduction == "mean":
+            # avg_non_ignore: divide only by non-ignored pixels
+            loss = F.cross_entropy(pred, label, weight=class_weight, reduction="none", ignore_index=self.ignore_index)
             avg_factor = label.numel() - (label == self.ignore_index).sum().item()
+            loss = weight_reduce_loss(loss, weight=self.weight, reduction=self.reduction, avg_factor=avg_factor)
         else:
-            avg_factor = None
+            # Use PyTorch's built-in mean which correctly normalizes by sum of class weights
+            reduction = self.reduction if self.avg_factor is None else "none"
+            loss = F.cross_entropy(pred, label, weight=class_weight, reduction=reduction, ignore_index=self.ignore_index)
+            if self.avg_factor is not None:
+                loss = weight_reduce_loss(loss, weight=self.weight, reduction="mean", avg_factor=self.avg_factor)
+            elif self.weight is not None:
+                loss = weight_reduce_loss(loss, weight=self.weight, reduction=self.reduction)
 
-        loss = weight_reduce_loss(loss, weight=self.weight, reduction=self.reduction, avg_factor=avg_factor)
         return self.loss_weight * loss
 
 
@@ -285,6 +292,7 @@ class MultiSegmentationLoss(nn.Module):
 
     def __init__(self, diceloss_weight=0.0, celoss_weight=0.0, class_weight=None):
         super(MultiSegmentationLoss, self).__init__()
+        # class_weight is applied to CE only; Dice uses uniform weights to avoid double-weighting
         self.ce_loss = CrossEntropyLoss(
             reduction="mean",
             loss_weight=celoss_weight,
@@ -292,7 +300,7 @@ class MultiSegmentationLoss(nn.Module):
         ) if celoss_weight > 0 else None
         self.dice_loss = DiceLoss(
             loss_weight=diceloss_weight,
-            class_weight=class_weight,
+            class_weight=None,
         ) if diceloss_weight > 0 else None
 
     def forward(self, pred, gt):

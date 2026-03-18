@@ -30,9 +30,9 @@ datasets:
 train:
   diceloss_weight: 0.5
   celoss_weight: 0.5
-  # Inverse-frequency class weights (normalized, mean=1) from bepli_v2 train set
-  # background is strongly downweighted (0.0008) to counter 98.2% dominance
-  class_weight: [0.0008, 0.6047, 1.2736, 0.3393, 0.6696, 0.5980, 0.2457, 2.9051, 0.1825, 0.6214, 4.1945, 0.3648]
+  # Inverse-frequency class weights (normalized, mean=1) from custom train set
+  # background clipped to 0.1 to avoid extreme gradient variance (original 0.0008 caused loss spikes)
+  class_weight: [0.1, 0.6047, 1.2736, 0.3393, 0.6696, 0.5980, 0.2457, 2.9051, 0.1825, 0.6214, 4.1945, 0.3648]
 decoder_head:
   type: "linear"
   backbone_out_layers: LAST
