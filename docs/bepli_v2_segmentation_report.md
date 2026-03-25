@@ -341,6 +341,21 @@ step3_final（40,000 steps）では step 15,000 で best mIoU 1.78% に到達し
 
 以下は EXPERIMENT_REPORT.md に記載された改善案のうち、未実施のものである。
 
+### 優先度 最高（次に試すべきタスク）
+
+- **ConvNeXt 蒸留モデルへの切り替え** — 今回の実験では ViT-B/16 を使用したが、画像数が限られているドメイン特化タスクでは、畳み込みベースの **ConvNeXt 蒸留モデル**の方が適している。ConvNeXt は空間的な局所性の帰納バイアスを持つため、少量データでの学習に有利であり、パラメータ効率も良い。DINOv3 では ViT-7B から蒸留された4サイズの ConvNeXt モデルが利用可能:
+
+  | モデル | パラメータ数 | ImageNet-1K Linear | ADE20K mIoU |
+  |-------|-----------|-------------------|------------|
+  | ConvNeXt Tiny | 29M | 87.7% | 73.7% |
+  | ConvNeXt Small | 50M | 88.7% | 73.7% |
+  | ConvNeXt Base | 89M | 89.2% | 77.2% |
+  | ConvNeXt Large | 198M | 89.4% | 81.3% |
+
+  - 蒸留設定: `dinov3/configs/train/distillation_convnext/` 配下に各サイズの yaml あり
+  - Hub からのロード: `dinov3_convnext_tiny()` 等、または HuggingFace `facebook/dinov3-convnext-{tiny,small,base,large}-pretrain-lvd1689m`
+  - まずは ConvNeXt Small（50M）あたりから試すのが妥当
+
 ### 優先度 高
 
 - **Dice Loss の有効化** — config-v2.yaml に設定済み（`diceloss_weight: 0.5`）だが、**この設定での実験は未実施**
