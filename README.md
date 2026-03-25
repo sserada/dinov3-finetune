@@ -1,3 +1,10 @@
+## bepli_v2 セグメンテーション実験について
+
+このリポジトリは DINOv3 を fork し、海洋デブリデータセット（bepli_v2）でのセグメンテーション実験を行ったものです。
+実験結果・変更内容・原因分析の詳細は **[docs/bepli_v2_segmentation_report.md](docs/bepli_v2_segmentation_report.md)** を参照してください。
+
+---
+
 :new: [2026-03-10] :fire: The [Canopy Height Maps v2 (CHMv2) model](https://arxiv.org/abs/2603.06382) and inference code are now available (more details on downloading the model weights and using the code [here](#canopy-height-maps-v2-chmv2)). The model weights are also available in [Hugging Face Hub](https://huggingface.co/facebook/dinov3-vitl16-chmv2-dpt-head) and [supported](https://github.com/huggingface/transformers/blob/main/docs/source/en/model_doc/chmv2.md) by the Hugging Face [Transformers](https://huggingface.co/docs/transformers/index) library. Building on our original high-resolution canopy height maps released in 2024, CHMv2 delivers substantial improvements in accuracy, detail, and global consistency by leveraging DINOv3.
 
 [2025-11-20] Distillation code and configurations for ConvNeXt backbones are now released!
