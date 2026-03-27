@@ -89,8 +89,13 @@ def validate(
         autocast_dtype,
     )
     logger.info(f"Step {global_step}: {new_metric_values_dict}")
-    # `segmentation_model` is a module list of [backbone, decoder]
-    # Only put the head in train mode
+    # Restore train mode for learnable modules after validation.
+    # For linear: only the decoder head (segmentation_model[1]) is trainable.
+    # For M2F: both the adapter (segmentation_model[0], i.e. DINOv3_Adapter) and
+    #   the decoder head (segmentation_model[1]) have trainable parameters.
+    #   The ViT backbone inside the adapter stays frozen via torch.no_grad() in its forward.
+    if decoder_head_type == "m2f":
+        segmentation_model.module.segmentation_model[0].train()
     segmentation_model.module.segmentation_model[1].train()
     is_better = False
     if new_metric_values_dict[metric_to_save] > current_best_metric_to_save_value:
@@ -194,6 +199,12 @@ def train_segmentation(
         autocast_dtype=config.model_dtype.autocast_dtype,
         dropout=config.decoder_head.dropout,
     )
+    # For M2F, build_segmentation_decoder sets the adapter to eval mode.
+    # Put the adapter (segmentation_model[0]) back in train mode so that
+    # SyncBatchNorm and other trainable layers behave correctly during training.
+    # The ViT backbone inside the adapter stays frozen via torch.no_grad() in its forward.
+    if config.decoder_head.type == "m2f":
+        segmentation_model.segmentation_model[0].train()
     global_device = distributed.get_rank()
     local_device = torch.cuda.current_device()
     segmentation_model = torch.nn.parallel.DistributedDataParallel(
