@@ -8,8 +8,9 @@ dist/
 
 **/notebooks
 
-# Ignore shell scripts
+# Ignore shell scripts (except scripts/ directory)
 *.sh
+!scripts/*.sh
 
 # Ignore swap files
 *.swp
