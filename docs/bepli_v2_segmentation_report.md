@@ -3,6 +3,7 @@
 **作成日**: 2026-03-25
 **最終更新日**: 2026-03-27
 **対象リポジトリ**: dinov3_official（Facebook Research DINOv3 の fork）
+**次のアクション**: [M2F デコーダー実験ガイド](./experiment_guide.md) を参照
 
 ---
 
