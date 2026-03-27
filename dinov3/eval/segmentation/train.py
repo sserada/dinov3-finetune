@@ -98,6 +98,22 @@ def validate(
     return is_better, new_metric_values_dict
 
 
+<<<<<<< HEAD
+=======
+def _m2f_output_to_pixel_pred(output):
+    """Convert Mask2Former dict output to per-pixel class predictions.
+
+    Args:
+        output: dict with 'pred_masks' (B, Q, H, W) and 'pred_logits' (B, Q, C+1)
+    Returns:
+        Tensor of shape (B, C, H, W) with per-pixel class scores
+    """
+    mask_cls = torch.nn.functional.softmax(output["pred_logits"], dim=-1)[..., :-1]  # (B, Q, C)
+    mask_pred = output["pred_masks"].sigmoid()  # (B, Q, H, W)
+    return torch.einsum("bqc,bqhw->bchw", mask_cls, mask_pred)
+
+
+>>>>>>> f097446 (Initial commit: DINOv3 fork with bepli_v2 segmentation support)
 def train_step(
     segmentation_model: torch.nn.Module,
     batch,
@@ -109,6 +125,10 @@ def train_step(
     criterion,
     model_dtype,
     global_step,
+<<<<<<< HEAD
+=======
+    decoder_head_type="linear",
+>>>>>>> f097446 (Initial commit: DINOv3 fork with bepli_v2 segmentation support)
 ):
     # a) load batch
     batch_img, (_, gt) = batch
@@ -118,7 +138,13 @@ def train_step(
 
     # b) forward pass
     with torch.autocast("cuda", dtype=model_dtype, enabled=True if model_dtype is not None else False):
+<<<<<<< HEAD
         pred = segmentation_model(batch_img)  # B x num_classes x h x w
+=======
+        pred = segmentation_model(batch_img)
+        if decoder_head_type == "m2f":
+            pred = _m2f_output_to_pixel_pred(pred)
+>>>>>>> f097446 (Initial commit: DINOv3 fork with bepli_v2 segmentation support)
         gt = gt.squeeze(1).long()  # Adapt gt dimension: remove channel dim only (not batch dim)
 
     # c) compute loss
@@ -148,13 +174,22 @@ def train_segmentation(
     backbone,
     config,
 ):
+<<<<<<< HEAD
     assert config.decoder_head.type == "linear", "Only linear head is supported for training"
+=======
+    assert config.decoder_head.type in ("linear", "m2f"), f"Unsupported decoder head type: {config.decoder_head.type}"
+>>>>>>> f097446 (Initial commit: DINOv3 fork with bepli_v2 segmentation support)
     # 1- load the segmentation decoder
     logger.info("Initializing the segmentation model")
     segmentation_model = build_segmentation_decoder(
         backbone,
         config.decoder_head.backbone_out_layers,
+<<<<<<< HEAD
         "linear",
+=======
+        config.decoder_head.type,
+        hidden_dim=config.decoder_head.hidden_dim,
+>>>>>>> f097446 (Initial commit: DINOv3 fork with bepli_v2 segmentation support)
         num_classes=config.decoder_head.num_classes,
         autocast_dtype=config.model_dtype.autocast_dtype,
         dropout=config.decoder_head.dropout,
@@ -288,6 +323,10 @@ def train_segmentation(
             criterion,
             config.model_dtype.autocast_dtype,
             global_step,
+<<<<<<< HEAD
+=======
+            decoder_head_type=config.decoder_head.type,
+>>>>>>> f097446 (Initial commit: DINOv3 fork with bepli_v2 segmentation support)
         )
         global_step += 1
         metric_logger.update(loss=loss)
@@ -340,11 +379,24 @@ def train_segmentation(
     logger.info("Training is done!")
     if tb_writer is not None:
         tb_writer.close()
+<<<<<<< HEAD
     # segmentation_model is a module list of [backbone, decoder]
     # Only save the decoder head
     torch.save(
         {
             "model": {k: v for k, v in segmentation_model.module.state_dict().items() if "segmentation_model.1" in k},
+=======
+    # Save trainable parameters.
+    # For linear head: only the decoder (segmentation_model.1) has trainable params.
+    # For M2F: both the adapter (segmentation_model.0) and the decoder (segmentation_model.1) have trainable params.
+    if config.decoder_head.type == "m2f":
+        save_state = {k: v for k, v in segmentation_model.module.state_dict().items() if v.requires_grad or "segmentation_model" in k}
+    else:
+        save_state = {k: v for k, v in segmentation_model.module.state_dict().items() if "segmentation_model.1" in k}
+    torch.save(
+        {
+            "model": save_state,
+>>>>>>> f097446 (Initial commit: DINOv3 fork with bepli_v2 segmentation support)
             "optimizer": optimizer.state_dict(),
         },
         os.path.join(config.output_dir, "model_final.pth"),

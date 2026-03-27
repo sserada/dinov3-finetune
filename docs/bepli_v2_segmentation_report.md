@@ -1,6 +1,10 @@
 # DINOv3 x bepli_v2 セグメンテーション 引き継ぎ資料
 
 **作成日**: 2026-03-25
+<<<<<<< HEAD
+=======
+**最終更新日**: 2026-03-27
+>>>>>>> f097446 (Initial commit: DINOv3 fork with bepli_v2 segmentation support)
 **対象リポジトリ**: dinov3_official（Facebook Research DINOv3 の fork）
 
 ---
@@ -14,8 +18,16 @@
 5. [データセット（bepli_v2）](#5-データセットbepli_v2)
 6. [実験一覧と結果](#6-実験一覧と結果)
 7. [失敗の原因分析](#7-失敗の原因分析)
+<<<<<<< HEAD
 8. [未実施の改善案](#8-未実施の改善案)
 9. [ファイル構成とコマンド例](#9-ファイル構成とコマンド例)
+=======
+8. [外部事例との比較分析（DINOv3 SAT-Bench）](#8-外部事例との比較分析dinov3-sat-bench)
+9. [失敗の真の原因: デコーダーの表現力不足](#9-失敗の真の原因-デコーダーの表現力不足)
+10. [改善案（優先度見直し済み）](#10-改善案優先度見直し済み)
+11. [ConvNeXt 蒸留モデルの利用可能性調査](#11-convnext-蒸留モデルの利用可能性調査)
+12. [ファイル構成とコマンド例](#12-ファイル構成とコマンド例)
+>>>>>>> f097446 (Initial commit: DINOv3 fork with bepli_v2 segmentation support)
 
 ---
 
@@ -292,9 +304,17 @@ step3_final     40,000       CE       あり        1.78%
 
 ---
 
+<<<<<<< HEAD
 ## 7. 失敗の原因分析
 
 ### 7.1 根本原因: 背景クラスの圧倒的支配
+=======
+## 7. 失敗の原因分析（初期）
+
+> **注意**: 本セクションは実験直後に記載した初期分析である。追加調査により、**真の主因はデコーダーの表現力不足**であることが判明した。詳細はセクション 8〜9 を参照。
+
+### 7.1 背景クラスの圧倒的支配
+>>>>>>> f097446 (Initial commit: DINOv3 fork with bepli_v2 segmentation support)
 
 画像面積の **98.2% が背景**。CE Loss はクラス頻度に不均衡があると支配的クラスを予測するだけで損失を最小化できてしまう。
 
@@ -337,6 +357,7 @@ step3_final（40,000 steps）では step 15,000 で best mIoU 1.78% に到達し
 
 ---
 
+<<<<<<< HEAD
 ## 8. 未実施の改善案
 
 以下は EXPERIMENT_REPORT.md に記載された改善案のうち、未実施のものである。
@@ -366,16 +387,230 @@ step3_final（40,000 steps）では step 15,000 で best mIoU 1.78% に到達し
 - **M2F デコーダーの使用** — 設定変更のみで試行可能
 - **FOUR_EVEN_INTERVALS 層の使用** — 設定変更のみで試行可能
 - **入力解像度の拡大**（例: 768x768）
+=======
+## 8. 外部事例との比較分析（DINOv3 SAT-Bench）
+
+### 8.1 参照資料
+
+DINOv3 の凍結バックボーン + デコーダー学習でセグメンテーションに成功している外部事例が存在する。
+
+- **発表資料**: https://www.docswell.com/s/motokimura/KVM382-dinov3-sat-bench#p9
+- **タスク**: SpaceNet 2 建物セグメンテーション（衛星画像）
+- **データ規模**: 9,783 画像（5-fold の 3 fold 使用）、解像度 320x320
+
+### 8.2 成功事例の実験設定
+
+| 項目 | SAT-Bench (成功) | 今回の実験 (失敗) |
+|------|------------------|-------------------|
+| **バックボーン** | ViT-L/16 (300M params) | ViT-B/16 (86M params) |
+| **バックボーン状態** | 完全凍結 | 完全凍結 |
+| **デコーダー** | **Feature2Pyramid + U-Net** | **BN + Conv1x1 (Linear Head)** |
+| **学習可能パラメータ** | **約 20M** | **10,764** |
+| **マルチスケール特徴** | 1/4〜1/32 の 4 段階 | 最終層のみ (1/16) |
+| **対象物体サイズ** | 建物（大きい、画像の数%〜数十%） | デブリ（極小、画像の 0.03〜0.07%） |
+| **背景比率** | 適度 | 98.2% |
+
+### 8.3 SAT-Bench から得られた知見
+
+1. **ViT バックボーンの凍結でも、十分なデコーダーがあれば小データで高精度を達成できる**
+   - 学習サンプル約 1,000 枚で、DINOv3（Web 学習版）が既存手法を上回った
+   - 2,000 枚を超えると、学習済み MaxViT-Small に追いつかれる傾向
+2. **意外にも、衛星画像特化重み（SAT-493M）より Web 学習重み（LVD-1689M）の方が高精度だった**
+3. **課題は建物輪郭周辺の精度不足** — データ量が増えると従来手法に劣化する場面がある
+
+### 8.4 今回の実験との決定的な差
+
+**デコーダーの学習可能パラメータ量が約 2,000 倍異なる**（20M vs 10,764）。
+
+SAT-Bench のデコーダー構成:
+
+```
+ViT 中間層出力
+  ↓ Feature2Pyramid（ViT の単一解像度出力を 4 段階のマルチスケール特徴ピラミッドに変換）
+  ↓ U-Net デコーダー（skip connection 付き段階的アップサンプリング）
+  ↓ 最終出力: 1/4 解像度 → 4 倍バイリニア補間
+```
+
+今回の Linear Head:
+
+```
+ViT 最終層出力 (32x32)
+  ↓ BatchNorm
+  ↓ Conv1x1（768ch → 12ch）← 唯一の学習層
+  ↓ 16 倍バイリニア補間 (32x32 → 512x512)
+```
+
+---
+
+## 9. 失敗の真の原因: デコーダーの表現力不足
+
+セクション 7 の初期分析と、セクション 8 の外部事例比較を統合した結論を示す。
+
+### 9.1 主因: Linear Head は実用的なセグメンテーションに設計されていない
+
+Linear Head（Conv1x1）は本来、**バックボーンの特徴品質を評価するためのプローブ（探針）**として設計されたものであり、実用的なセグメンテーション精度を出すことを目的としていない。
+
+Linear Head の構造的限界:
+
+1. **空間的文脈を一切見ない** — Conv1x1 は receptive field が 1 ピクセル分しかない。位置 (i, j) の予測はその位置の特徴ベクトルのみで決まり、「隣に何があるか」を考慮できない
+2. **粗い特徴マップからの単純補間** — 32x32 → 512x512 の 16 倍 bilinear 補間は学習不要のただの拡大処理であり、粗い予測をぼんやり引き伸ばすだけ
+3. **パラメータ数の絶対的不足** — 10,764 パラメータでは、12 クラスの空間パターンを学習する容量が根本的に足りない
+
+### 9.2 U-Net 型 / M2F 型デコーダーとの構造比較
+
+```
+Linear Head (今回):
+  特徴(32x32) → [Conv1x1] → bilinear補間 → 予測(512x512)
+
+U-Net 型デコーダー (SAT-Bench):
+  特徴(32x32) ──→ [Conv3x3 + 文脈統合]  → 64x64
+  特徴(64x64) ──→ [Conv3x3 + skip 結合] → 128x128
+  特徴(128x128)→ [Conv3x3 + skip 結合]  → 256x256
+                  [Conv3x3 + skip 結合]  → 512x512 → 予測
+```
+
+U-Net 型 / M2F 型の利点:
+- **Conv3x3 以上**で周辺ピクセルの空間的文脈を利用できる
+- **段階的アップサンプリング**で高解像度の空間情報を復元できる
+- **skip connection** でバックボーン浅い層の高解像度特徴を活用できる
+- 1 ピクセル未満の小物体でも、周辺の文脈パターンから推論が可能
+
+### 9.3 原因の優先度整理（見直し後）
+
+| 優先度 | 原因 | 寄与度 | 対策 |
+|--------|------|--------|------|
+| **1（最大）** | デコーダーの表現力不足（Linear Head） | 極めて高い | M2F デコーダーへの変更 |
+| **2** | マルチスケール特徴の不使用 | 高い | FOUR_EVEN_INTERVALS + M2F |
+| **3** | 背景 98.2% の極端な不均衡 | 中程度 | Dice Loss、クラス重み |
+| **4** | 物体サイズと特徴マップ解像度の不整合 | 中程度 | 入力解像度拡大、ConvNeXt |
+| **5** | ドメインギャップ | 低〜中程度 | バックボーン部分 Fine-tuning |
+
+> **重要**: 初期分析（セクション 7）では「背景の不均衡」と「ViT パッチサイズとの不整合」を主因としていたが、外部事例の比較により、**それ以前にデコーダーの表現力が決定的に不足していた**ことが判明した。SAT-Bench では ViT バックボーン凍結のまま、デコーダーを強化するだけで少量データでも高精度を達成している。
+
+### 9.4 期待される改善効果と注意点
+
+M2F デコーダーへの変更により、mIoU 1.8% → **10〜30% 程度**への改善は十分ありえる。ただし以下の点に留意:
+
+- SAT-Bench の対象（建物）は画像の数%〜数十%を占める大きな物体であり、bepli_v2 のデブリ（0.03〜0.07%）とは物体サイズが根本的に異なる
+- デコーダー強化だけで「実用水準」（mIoU 50%+）に到達するかは不確実
+- デコーダー強化で改善が見られた場合、次にバックボーン側（ConvNeXt、部分 Fine-tuning）を重ねることで更なる改善が期待できる
+
+---
+
+## 10. 改善案（優先度見直し済み）
+
+> セクション 9 の分析結果を踏まえ、旧セクション 8 の優先度を見直した。**デコーダー強化を最優先に変更**。
+
+### 優先度 最高（次に試すべきタスク）
+
+- **M2F (Mask2Former) デコーダーへの変更** — 本リポジトリに実装済み。設定変更のみで試行可能。マルチスケール特徴 + Transformer デコーダーにより、空間的文脈の利用と段階的なアップサンプリングが実現される。SAT-Bench の成功事例から、デコーダー強化が最も効果的な改善策と判断
+
+  ```yaml
+  # config の変更箇所
+  decoder_head:
+    type: m2f                                    # linear → m2f
+    backbone_out_layers: FOUR_EVEN_INTERVALS     # LAST → FOUR_EVEN_INTERVALS
+  ```
+
+  - M2F の実装: `dinov3/eval/segmentation/models/heads/mask2former_head.py`
+  - Adapter の実装: `dinov3/eval/segmentation/models/backbone/dinov3_adapter.py`
+  - **注意**: M2F + Adapter は Linear Head に比べて VRAM 使用量が大幅に増加する。バッチサイズの調整が必要になる可能性がある
+  - **注意**: `run.py:33` に `assert config.decoder_head.type == "linear"` があり、M2F での学習には修正が必要（評価 `test_segmentation` は M2F 対応済み）
+
+### 優先度 高
+
+- **Dice Loss の有効化** — config-v2.yaml に設定済み（`diceloss_weight: 0.5`）だが、**この設定での実験は未実施**。M2F と併用することで、背景支配の問題を軽減できる可能性がある
+- **ConvNeXt 蒸留モデルへの切り替え** — 畳み込みベースでネイティブなマルチスケール特徴を持つ。M2F との相性が良い。詳細はセクション 11 参照
+
+### 優先度 中
+
+- **バックボーンの部分 Fine-tuning** — 凍結を解除して最終数層のみ学習させることでドメインギャップを軽減
+- **入力解像度の拡大**（例: 768x768）— 特徴マップ上の物体サイズを増加させる
+>>>>>>> f097446 (Initial commit: DINOv3 fork with bepli_v2 segmentation support)
 - **データ拡張の強化**
 
 ### 優先度 低
 
+<<<<<<< HEAD
 - **SAT-493M 重みの試用** — 衛星画像で学習済みのためドメインが近い可能性
+=======
+- **SAT-493M 重みの試用** — SAT-Bench では Web 学習版（LVD-1689M）の方が高精度だったため、優先度を下げた
+>>>>>>> f097446 (Initial commit: DINOv3 fork with bepli_v2 segmentation support)
 - **インスタンスセグメンテーションへの転換**
 
 ---
 
+<<<<<<< HEAD
 ## 9. ファイル構成とコマンド例
+=======
+## 11. ConvNeXt 蒸留モデルの利用可能性調査
+
+### 11.1 事前学習済み重みの公開状況
+
+4 サイズ全て Facebook 公式サーバー（`https://dl.fbaipublicfiles.com/dinov3`）から自動ダウンロード可能。ローカルに重みファイルを配置する必要はない。
+
+| モデル | hub 名 | embed_dim (最終層) | パラメータ数 | hash |
+|--------|--------|-------------------|-------------|------|
+| ConvNeXt Tiny | `dinov3_convnext_tiny` | 768 | 29M | `21b726bb` |
+| ConvNeXt Small | `dinov3_convnext_small` | 768 | 50M | `296db49d` |
+| ConvNeXt Base | `dinov3_convnext_base` | 1024 | 89M | `801f2ba9` |
+| ConvNeXt Large | `dinov3_convnext_large` | 1536 | 198M | `61fa432d` |
+
+### 11.2 既存パイプラインとの互換性
+
+コード調査の結果、**現在の学習パイプラインは ConvNeXt と互換性がある**:
+
+1. `hubconf.py` に `dinov3_convnext_tiny/small/base/large` が登録済み
+2. `dinov3/eval/setup.py` の `load_model_and_context()` で `"dinov3" in model_config.dino_hub` の判定があり、ConvNeXt モデル名も通過する
+3. `dinov3/models/convnext.py` の `ConvNeXt` クラスが ViT と同じインターフェース（`get_intermediate_layers()`, `embed_dim`, `n_blocks`）を実装済み
+4. Linear Head / M2F 両方のデコーダーでバックボーン非依存の設計になっている
+
+### 11.3 ConvNeXt の技術的特徴
+
+- **ネイティブなマルチスケール特徴**: 4 ステージで [H/4, H/8, H/16, H/32] の特徴マップを自然に出力。ViT + Feature2Pyramid のような変換が不要
+- **空間的局所性の帰納バイアス**: 畳み込みベースのため、少量データでの学習に有利
+- **各ステージの次元**: Tiny/Small = [96, 192, 384, 768]、Base = [128, 256, 512, 1024]、Large = [192, 384, 768, 1536]
+
+### 11.4 注意点
+
+- ConvNeXt の `embed_dim` は最終ステージの次元のみを返す（例: Small = 768）。`FOUR_EVEN_INTERVALS` で 4 層抽出する場合、`models/__init__.py:117` の処理で全層が同一次元として扱われる。`get_intermediate_layers` 内でリサイズされるため Linear Head では動作するが、M2F (DINOv3_Adapter) は ViT を前提とした設計のため、ConvNeXt との組み合わせには追加の検証・改修が必要
+- `dino_hub_weights` を省略すれば Facebook サーバーから自動ダウンロードされる。ローカルに保存したい場合は `weights/` ディレクトリに配置し、パスを指定する
+
+### 11.5 実行コマンド例
+
+```bash
+# ConvNeXt Small + Linear Head（最終層のみ、最小構成での動作確認用）
+torchrun --nproc_per_node=1 -m dinov3.eval.segmentation.run \
+  config=dinov3/eval/segmentation/configs/config-coco-linear-training.yaml \
+  output_dir=./outputs/convnext_small_linear \
+  model.dino_hub=dinov3_convnext_small \
+  datasets.root=/path/to/bepli_v2 \
+  decoder_head.backbone_out_layers=LAST \
+  scheduler.total_iter=5000 \
+  eval.eval_interval=1000
+```
+
+---
+
+## 12. ファイル構成とコマンド例
+
+### M2F デコーダー関連ファイル（追加）
+
+```
+dinov3/eval/segmentation/
+  models/
+    __init__.py                    # build_segmentation_decoder(): デコーダー構築のエントリポイント
+    backbone/
+      dinov3_adapter.py            # DINOv3_Adapter: ViT → マルチスケール特徴変換（M2F 用）
+    heads/
+      linear_head.py               # LinearHead: Conv1x1 のみ（現在使用中）
+      mask2former_head.py          # Mask2FormerHead: M2F デコーダー
+      pixel_decoder.py             # PixelDecoder: M2F 内部のピクセルデコーダー
+    utils/
+      ms_deform_attn.py            # Multi-Scale Deformable Attention（M2F の中核モジュール）
+      transformer.py               # Transformer デコーダー層
+```
+>>>>>>> f097446 (Initial commit: DINOv3 fork with bepli_v2 segmentation support)
 
 ### 主要ファイル
 
@@ -460,6 +695,13 @@ openpyxl
 ## 補足: この実験から得られた知見
 
 1. **パイプラインとしては正常動作している** — 問題はコードではなく、タスクとモデル設定の相性
+<<<<<<< HEAD
 2. **凍結バックボーン + 線形ヘッド（Linear Probe）は、このデータセットには不向き** — 背景 98.2%・極小物体・ドメインギャップの三重苦
 3. **クラス重みだけでは不十分** — ピクセル数の偏りが極端すぎて、重み調整のみでは根本解決にならない
 4. **次のステップとしては、バックボーンの Fine-tuning か、より表現力の高いデコーダー（M2F）の使用が最有力**
+=======
+2. **Linear Head はプローブであり、実用的なセグメンテーション用途には不向き** — 空間的文脈を持たない Conv1x1 は、背景 98.2%・極小物体のタスクでは原理的に機能しない
+3. **クラス重みだけでは不十分** — ピクセル数の偏りが極端すぎて、重み調整のみでは根本解決にならない
+4. **外部事例（DINOv3 SAT-Bench）から、凍結バックボーンでもデコーダーを強化すれば少量データで高精度を達成できることが確認済み**
+5. **次のステップとしては M2F デコーダーの使用が最優先**。バックボーン変更（ConvNeXt、部分 Fine-tuning）はその後に検討
+>>>>>>> f097446 (Initial commit: DINOv3 fork with bepli_v2 segmentation support)
